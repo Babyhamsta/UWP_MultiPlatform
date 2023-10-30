@@ -4,6 +4,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Xml;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
+using System.Security.Policy;
 
 namespace UWP_Multiplatform
 {
@@ -14,14 +16,19 @@ namespace UWP_Multiplatform
             InitializeComponent();
         }
 
-        static string UWPPATH = "";
-        static string ModdedClients = "";
-        Dictionary<string, string> ModdedClient = new Dictionary<string, string>
+        struct ModdedClient
         {
-            { "Path", "" },
-            { "Name", "" },
-            { "Int", "" },
-        };
+            public string CustomName;
+            public string Path;
+            public string ApplicationName;
+        }
+
+        ModdedClient moddedClient;
+
+        static string UWPPATH = "";
+        static string UWP_PublisherID = "";
+        static string ModdedClients = "";
+
 
         public static void EnableDeveloperMode()
         {
@@ -118,28 +125,29 @@ namespace UWP_Multiplatform
             }
         }
 
-        private void CloneROBLOX() 
+        private void CloneROBLOX(ref ModdedClient moddedClient) 
         {
             // Check if it exists, if so then create a new modded client folder and copy to new folder
             if (Directory.Exists(UWPPATH))
             {
                 Random random = new Random();
-                int randomInt = random.Next(1, 100000);
-                ModdedClient["Int"] = randomInt.ToString();
-                ModdedClient["Name"] = "ROBLOXCORPORATION.ROBLOX." + ModdedClient["Int"];
-                ModdedClient["Path"] = ModdedClients + @"\" + ModdedClient["Name"];
 
-                // If exists try again.. Lazy ik..
-                while (Directory.Exists(ModdedClient["Path"]))
+                moddedClient.ApplicationName = "ROBLOXCORPORATION.ROBLOX." + moddedClient.CustomName;
+                moddedClient.Path = ModdedClients + @"\" + moddedClient.ApplicationName;
+
+                // If the name already exists just add a random number to the end of it (Maybe instead increment a number)
+                string oldCustomName = moddedClient.CustomName;
+                while (Directory.Exists(moddedClient.Path) || moddedClient.CustomName == string.Empty)
                 {
-                    randomInt = random.Next(1, 100000);
-                    ModdedClient["Int"] = randomInt.ToString();
-                    ModdedClient["Name"] = "ROBLOXCORPORATION.ROBLOX." + ModdedClient["Int"];
-                    ModdedClient["Path"] = ModdedClients + @"\" + ModdedClient["Name"];
+                    int randomInt = random.Next(1, 100000);
+
+                    moddedClient.CustomName = oldCustomName + randomInt.ToString();
+                    moddedClient.ApplicationName = "ROBLOXCORPORATION.ROBLOX." + moddedClient.CustomName;
+                    moddedClient.Path = ModdedClients + @"\" + moddedClient.ApplicationName;
                 }
 
-                CopyDirectory(UWPPATH, ModdedClient["Path"]);
-                GetModdedClientReady();
+                CopyDirectory(UWPPATH, moddedClient.Path);
+                GetModdedClientReady(ref this.moddedClient);
             }
             else 
             {
@@ -148,17 +156,17 @@ namespace UWP_Multiplatform
             }
         }
 
-        private void GetModdedClientReady()
+        private void GetModdedClientReady(ref ModdedClient moddedClient)
         {
-            if (Directory.Exists(ModdedClient["Path"]))
+            if (Directory.Exists(moddedClient.Path))
             {
-                string Signature = ModdedClient["Path"] + @"\AppxSignature.p7x";
+                string Signature = moddedClient.Path + @"\AppxSignature.p7x";
                 if (File.Exists(Signature))
                 {
                     File.Delete(Signature);
                 }
 
-                string XMLFile = ModdedClient["Path"] + @"\AppxManifest.xml";
+                string XMLFile = moddedClient.Path + @"\AppxManifest.xml";
                 if (File.Exists(XMLFile))
                 {
                     //try
@@ -176,12 +184,12 @@ namespace UWP_Multiplatform
 
                         if (identityNode != null && visualElementsNode != null && DefaultTitleNode != null)
                         {
-                            string newTitle = "Roblox-MultiUWP-" + ModdedClient["Int"];
-                            identityNode.Attributes["Name"].Value = "ROBLOXCORPORATION.ROBLOX." + ModdedClient["Int"];
+                            string newTitle = "Roblox-MultiUWP-" + moddedClient.CustomName;
+                            identityNode.Attributes["Name"].Value = "ROBLOXCORPORATION.ROBLOX." + moddedClient.CustomName;
                             visualElementsNode.Attributes["DisplayName"].Value = newTitle;
                             DefaultTitleNode.Attributes["ShortName"].Value = newTitle;
                             xmlDoc.Save(XMLFile);
-                            RegisterModdedClient();
+                            RegisterModdedClient(ref moddedClient);
                         }
                         else
                         {
@@ -205,7 +213,7 @@ namespace UWP_Multiplatform
                     MessageBox.Show("Unable to locate AppxManifest.xml inside modded client, please try again.", "ERROR");
                     try 
                     {
-                        Directory.Delete(ModdedClient["Path"], true);
+                        Directory.Delete(moddedClient.Path, true);
                     } catch(Exception) { }
                     return;
                 }
@@ -217,9 +225,9 @@ namespace UWP_Multiplatform
             }
         }
 
-        private void RegisterModdedClient()
+        private void RegisterModdedClient(ref ModdedClient moddedClient)
         {
-            string results = RunPowerShellCommand($"Add-AppxPackage -path \"" + ModdedClient["Path"] + @"\AppxManifest.xml" + "\" -register");
+            string results = RunPowerShellCommand($"Add-AppxPackage -path \"" + moddedClient.Path + @"\AppxManifest.xml" + "\" -register");
             
             if (results.Length != 0)
             {
@@ -246,14 +254,14 @@ namespace UWP_Multiplatform
 
         private void ScanForModdedROBLOX()
         {
-            listBox1.Items.Clear();
+            RobloxInstancesListBox.Items.Clear();
             string[] results = PowerSheelArrayReturn($"Get-AppxPackage *ROBLOXCORPORATION.ROBLOX.* | Format-List -Property Name");
 
             foreach (string line in results)
             {
                 if (line.StartsWith("Name"))
                 {
-                    listBox1.Items.Add(line.Substring(7).Trim()); // Skip "Name:" and trim the spaces
+                    RobloxInstancesListBox.Items.Add(line.Substring(7).Trim()); // Skip "Name:" and trim the spaces
                 }
             }
 
@@ -264,6 +272,13 @@ namespace UWP_Multiplatform
             {
                 Directory.CreateDirectory(ModdedClients);
             }
+        }
+
+        private void LaunchInstance(string ApplicationName)
+        {
+            var publisherIdMatch = Regex.Match(UWPPATH, "(?<=__)(?s)(.*$)");
+            string publisherID = publisherIdMatch.Value.Trim();
+            RunPowerShellCommand("explorer.exe shell:AppsFolder\\" + RobloxInstancesListBox.SelectedItem.ToString() + "_" + publisherID + "!App");
         }
 
         private void Form1_Load(object sender, EventArgs e)
@@ -297,6 +312,10 @@ namespace UWP_Multiplatform
             {
                 MessageBox.Show("Unable to locate ROBLOX UWP, this application won't work as intended. Please install ROBLOX from the Microsoft Store and try again.", "ERROR");
                 Environment.Exit(0);
+            } else
+            {
+                var publisherIdMatch = Regex.Match(UWPPATH, "(?<=__)(?s)(.*$)");
+                UWP_PublisherID = publisherIdMatch.Value.Trim();
             }
 
             // We can now scan for all modded versions that may be installed.
@@ -306,28 +325,33 @@ namespace UWP_Multiplatform
         private void CreateInstance_Click(object sender, EventArgs e)
         {
             // Disable and check for ROBLOX at the UWP path
-            CreateInstance.Enabled = false;
+
+            CreateInstanceButton.Enabled = false;
             BackgroundWorkanator.RunWorkerAsync();
         }
 
         private void RemoveInstance_Click(object sender, EventArgs e)
         {
-            if (listBox1.SelectedItems.Count > 0) 
+            if (RobloxInstancesListBox.SelectedItems.Count > 0) 
             {
-                RemoveInstance.Enabled = false;
-                BackgroundWorkanator2.RunWorkerAsync(listBox1.SelectedItem.ToString());
+                RemoveSelectedInstance.Enabled = false;
+                BackgroundWorkanator2.RunWorkerAsync(RobloxInstancesListBox.SelectedItem.ToString());
             }
         }
 
         private void BackgroundWorkanator_DoWork(object sender, System.ComponentModel.DoWorkEventArgs e)
         {
-            CloneROBLOX();
+            // Remove all spaces and trim text
+            string text = InstanceNameTextBox.Text.Trim().Replace(" ", "");
+            moddedClient.CustomName = text;
+
+            CloneROBLOX(ref moddedClient);
         }
 
         private void BackgroundWorkanator_RunWorkerCompleted(object sender, System.ComponentModel.RunWorkerCompletedEventArgs e)
         {
             ScanForModdedROBLOX();
-            CreateInstance.Enabled = true;
+            CreateInstanceButton.Enabled = true;
         }
 
         private void BackgroundWorkanator2_DoWork(object sender, System.ComponentModel.DoWorkEventArgs e)
@@ -338,7 +362,12 @@ namespace UWP_Multiplatform
         private void BackgroundWorkanator2_RunWorkerCompleted(object sender, System.ComponentModel.RunWorkerCompletedEventArgs e)
         {
             ScanForModdedROBLOX();
-            RemoveInstance.Enabled = true;
+            RemoveSelectedInstance.Enabled = true;
+        }
+
+        private void LaunchSelectedInstance_Click(object sender, EventArgs e)
+        {
+            RunPowerShellCommand("explorer.exe shell:AppsFolder\\" + RobloxInstancesListBox.SelectedItem.ToString() + "_" + UWP_PublisherID + "!App");
         }
     }
 }
